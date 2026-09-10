@@ -14,6 +14,7 @@ import requests
 import pyperclip
 import psutil
 import questionary
+from prompt_toolkit.styles import Style
 
 logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
@@ -49,6 +50,25 @@ PROVIDERS = {
 
 DEFAULT_PROVIDER = "deepseek"
 DEFAULT_TIMEOUT = 30
+
+HOW_STYLE = Style.from_dict({
+    "qmark": "fg:#2f6fb3 bold",
+    "question": "bold",
+    "answer": "fg:#2e8b57 bold",
+    "pointer": "fg:#2f6fb3 bold",
+    "highlighted": "reverse",
+    "selected": "fg:#2e8b57",
+    "separator": "fg:#888888",
+    "instruction": "fg:#888888 italic",
+    "text": "",
+    "disabled": "fg:#888888 italic",
+    "completion-menu.completion": "bg:#1a1b26 fg:#c0caf5",
+    "completion-menu.completion.current": "bg:#2f6fb3 fg:#ffffff bold",
+    "completion-menu.meta.completion": "bg:#1a1b26 fg:#888888",
+    "completion-menu.meta.completion.current": "bg:#2f6fb3 fg:#ffffff",
+    "scrollbar.background": "bg:#1a1b26",
+    "scrollbar.button": "bg:#888888",
+})
 
 
 class ApiError(Exception): pass
@@ -272,7 +292,7 @@ def ask(question):
 
 def choose_provider() -> str:
     choices = [questionary.Choice(title=p["label"], value=name) for name, p in PROVIDERS.items()]
-    return ask(questionary.select("Choose a provider", choices=choices, default=DEFAULT_PROVIDER))
+    return ask(questionary.select("Choose a provider", choices=choices, default=DEFAULT_PROVIDER, style=HOW_STYLE, instruction="(↑/↓ to move, enter to select)"))
 
 
 def choose_model(provider_name: str, config: dict, models: list = None) -> str:
@@ -291,23 +311,19 @@ def choose_model(provider_name: str, config: dict, models: list = None) -> str:
         ids = [m["id"] for m in models]
         if default in ids:
             ids = [default] + [i for i in ids if i != default]
-        labels = {m["id"]: m["name"] for m in models}
-
-        def render(model_id):
-            name = labels.get(model_id, model_id)
-            return model_id if name == model_id else f"{model_id}  ({name})"
 
         return ask(questionary.autocomplete(
-            f"Select a model — {len(ids)} available, type to filter",
+            f"Select a model — {len(ids)} available (type to filter)",
             choices=ids,
             default=default if default in ids else ids[0],
             match_middle=True,
             ignore_case=True,
+            style=HOW_STYLE,
             validate=lambda text: True if text in ids else "Pick a model from the list (type to filter)",
         ))
 
     print("⚠ No model list available; enter the model name manually.")
-    return ask(questionary.text("Model name", default=default))
+    return ask(questionary.text("Model name", default=default, style=HOW_STYLE))
 
 
 def onboard(reason: str = "") -> dict:
@@ -328,7 +344,7 @@ def onboard(reason: str = "") -> dict:
         print(f"Get an API key at: {provider['signup']}\n")
 
     while True:
-        api_key = ask(questionary.password("Paste your API key (hidden)"))
+        api_key = ask(questionary.password("Paste your API key (hidden)", style=HOW_STYLE))
         if not api_key:
             print("⚠ API key cannot be empty.")
             continue
@@ -343,7 +359,7 @@ def onboard(reason: str = "") -> dict:
             models = fetch_models(config)
         except AuthError as e:
             print(f"✗ {e}")
-            if ask(questionary.confirm("Re-enter the API key?", default=True)):
+            if ask(questionary.confirm("Re-enter the API key?", default=True, style=HOW_STYLE)):
                 continue
             raise AuthError(str(e))
         except ApiError as e:
@@ -359,9 +375,9 @@ def onboard(reason: str = "") -> dict:
             break
 
         print(f"⚠ Connection test failed: {message}")
-        if ask(questionary.confirm("Re-enter the API key?", default=True)):
+        if ask(questionary.confirm("Re-enter the API key?", default=True, style=HOW_STYLE)):
             continue
-        if ask(questionary.confirm("Save this configuration anyway?", default=False)):
+        if ask(questionary.confirm("Save this configuration anyway?", default=False, style=HOW_STYLE)):
             break
         raise AuthError("Setup cancelled.")
 
@@ -379,6 +395,8 @@ def build_config(opts: dict) -> dict:
             "Choose a provider",
             choices=[questionary.Choice(title=p["label"], value=name) for name, p in PROVIDERS.items()],
             default=config.get("provider", DEFAULT_PROVIDER),
+            style=HOW_STYLE,
+            instruction="(↑/↓ to move, enter to select)",
         ))
         if provider_name not in PROVIDERS:
             raise AuthError(f"Unknown provider '{provider_name}'. Options: {', '.join(PROVIDERS)}")
